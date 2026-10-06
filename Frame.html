@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame Tracer</title>
+<style>
+:root{--bg:#121417;--pn:#1a1d22;--ln:#2a2f37;--tx:#d9dee6;--mu:#8791a0;--ac:#3b8cff}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--tx);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;display:grid;grid-template-rows:auto 1fr 58px;grid-template-columns:230px 1fr;overflow:hidden;user-select:none}
+button,input{font:inherit;color:inherit}
+button{background:#262b33;border:1px solid var(--ln);border-radius:5px;padding:5px 11px;cursor:pointer}
+button:hover:not(:disabled){background:#2f3641}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+#top{grid-column:1/3;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:44px;padding:6px 10px;background:var(--pn);border-bottom:1px solid var(--ln)}
+#add{font-size:20px;line-height:1;padding:3px 12px;background:var(--ac);border-color:var(--ac);color:#fff}
+#add:hover:not(:disabled){background:#5aa0ff}
+#top label{color:var(--mu);display:flex;align-items:center;gap:6px;margin-left:8px}
+#fps{width:64px;background:#0e1013;border:1px solid var(--ln);border-radius:4px;padding:3px 6px}
+#status{margin-left:auto;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#side{background:var(--pn);border-right:1px solid var(--ln);overflow:auto;padding:6px 0}
+.it{padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mu)}
+.sh{cursor:pointer;color:var(--tx)}
+.sh:hover{background:#232830}
+.sh.sel{background:var(--ac);color:#fff}
+.sh input{background:#0e1013;border:1px solid var(--ac);border-radius:3px;padding:0 4px;width:130px}
+#stage{position:relative;min-width:0;min-height:0;background:#0b0c0e}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+#drop{position:absolute;inset:14px;border:2px dashed #3a414c;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;cursor:pointer;color:var(--mu)}
+#drop b{font-size:18px;color:var(--tx);font-weight:600}
+#drop.over{border-color:var(--ac);background:#3b8cff14}
+#bar{grid-column:1/3;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--pn);border-top:1px solid var(--ln)}
+#bar .nav{width:34px;font-weight:700}
+#play{min-width:84px}
+.sc{position:relative;flex:1;height:34px;display:flex;align-items:center;min-width:80px}
+#scrub{width:100%;margin:0;-webkit-appearance:none;appearance:none;height:6px;background:#2b313a;border-radius:3px;outline-offset:6px}
+#scrub::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:20px;border-radius:3px;background:#e7ebf1;border:0}
+#scrub::-moz-range-thumb{width:14px;height:20px;border-radius:3px;background:#e7ebf1;border:0}
+#marks{position:absolute;left:0;right:0;bottom:0;height:9px;pointer-events:none}
+#marks i{position:absolute;width:8px;height:8px;background:#ffc247;transform:translateX(-4px) rotate(45deg);pointer-events:auto;cursor:pointer}
+#fr{min-width:96px;text-align:right;font-variant-numeric:tabular-nums;color:var(--mu)}
+#exp{background:#e7ebf1;color:#111;border-color:#e7ebf1;font-weight:600}
+#exp:hover:not(:disabled){background:#fff}
+#addDlg{position:fixed;z-index:9;display:none;background:#22262d;border:1px solid var(--ln);border-radius:8px;padding:10px;box-shadow:0 8px 24px #0008;width:190px}
+#addDlg p{margin:0 0 8px;color:var(--mu)}
+#addDlg button{display:flex;align-items:center;gap:10px;width:100%;margin-top:6px;text-align:left}
+#addDlg i{display:inline-block;border:2px solid #e7ebf1;background:#ffffff40}
+#addDlg .sq{width:16px;height:16px}
+#addDlg .rc{width:24px;height:16px}
+#bindSel{background:#0e1013;border:1px solid var(--ln);border-radius:4px;padding:3px 4px;max-width:120px}
+#busy{position:fixed;inset:0;z-index:20;background:#000a;display:none;align-items:center;justify-content:center}
+#busy div{background:#22262d;border:1px solid var(--ln);border-radius:8px;padding:16px 20px;display:flex;flex-direction:column;gap:10px;min-width:260px}
+#busy progress{width:100%}
+#menu{position:fixed;z-index:9;background:#22262d;border:1px solid var(--ln);border-radius:6px;padding:4px;display:none;box-shadow:0 8px 24px #0008}
+#menu div{padding:5px 18px 5px 10px;border-radius:4px;cursor:pointer}
+#menu div:hover{background:var(--ac);color:#fff}
+@media(max-width:700px){body{grid-template-columns:150px 1fr}}
+</style>
+</head>
+<body>
+<div id="top">
+  <button id="add" title="Add rectangle" disabled>+</button>
+  <button id="open">Open video</button>
+  <button id="setkey" title="Keyframe at current frame (K)" disabled>◆ Set key</button>
+  <button id="mirror" title="Duplicate the selected shape, flipped across the video's vertical center" disabled>Mirror To X</button>
+  <button id="trkPt" title="Click the video to place a tracking point" disabled>Track Point</button>
+  <button id="trkShape" title="Track the area under the selected shape and bind the shape to it" disabled>Track Shape</button>
+  <label>Bind <select id="bindSel" title="Make the selected shape follow a tracker" disabled><option value="">None</option></select></label>
+  <button id="bake" title="Replace the binding with a keyframe on every frame, so the shape moves on its own" disabled>Turn Bind into Keyframes</button>
+  <button id="delL" title="Delete the selected shape's keyframes before the scrubber" disabled>Delete All Keyframes to Left</button>
+  <button id="delR" title="Delete the selected shape's keyframes after the scrubber" disabled>Delete All Keyframes To Right</button>
+  <button id="delkey" title="Remove keyframe at current frame" disabled>Delete key</button>
+  <label>fps <input id="fps" type="number" min="1" max="240" step="any" value="30"></label>
+  <span id="status"></span>
+</div>
+<div id="side"><div id="tree"></div></div>
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="drop"><b>Drop an MP4 here</b><span>or click to choose a file</span></div>
+</div>
+<div id="bar">
+  <button class="nav" id="prev" title="Previous frame (←)" disabled>&lt;</button>
+  <button id="play" disabled>▶ Play</button>
+  <button class="nav" id="next" title="Next frame (→)" disabled>&gt;</button>
+  <div class="sc"><input id="scrub" type="range" min="0" max="0" value="0" disabled><div id="marks"></div></div>
+  <span id="fr">0 / 0</span>
+  <button id="imp" disabled>Import XML</button>
+  <button id="exp" disabled>Export In XML</button>
+</div>
+<div id="addDlg" role="dialog" aria-label="Add shape">
+  <p>Add a shape</p>
+  <button data-type="square"><i class="sq"></i>Square</button>
+  <button data-type="rectangle"><i class="rc"></i>Rectangle</button>
+</div>
+<div id="busy"><div><b id="busyTxt">Tracking…</b><progress id="prog" max="100" value="0"></progress><button id="cancelT">Cancel</button></div></div>
+<div id="menu"><div data-a="rename">Rename</div><div data-a="del">Delete</div></div>
+<input id="xmlfile" type="file" accept=".xml,application/xml,text/xml" hidden>
+<input id="file" type="file" accept="video/mp4,video/*" hidden>
+
+<script>
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const vid = document.createElement('video');
+vid.muted = true; vid.playsInline = true; vid.preload = 'auto';
+
+let W = 0, H = 0, fps = 30, N = 0, frame = 0, fileName = '';
+let shapes = [], sel = null, editing = false, mode = null, snap = null, drag = null;
+let counters = { rectangle: 0, square: 0, tracker: 0 }, nextId = 1, playing = false;
+let trackers = [], selT = null, busy = false, cancelT = false, placing = false;
+let view = { s: 1, x: 0, y: 0 }, mouse = { x: 0, y: 0 };
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+const clone = p => p.map(q => [q[0], q[1]]);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* ---------- keyframes ---------- */
+const keysOf = s => Object.keys(s.keys).map(Number).sort((a, b) => a - b);
+function evalS(s, f) {
+  const k = keysOf(s);
+  if (f <= k[0]) return s.keys[k[0]];
+  const last = k[k.length - 1];
+  if (f >= last) return s.keys[last];
+  let i = 0; while (k[i + 1] <= f) i++;
+  const a = s.keys[k[i]], b = s.keys[k[i + 1]], t = (f - k[i]) / (k[i + 1] - k[i]);
+  return a.map((p, j) => [p[0] + (b[j][0] - p[0]) * t, p[1] + (b[j][1] - p[1]) * t]);
+}
+const cur = s => clone(shapePts(s, frame));
+function setKey(s, pts) { const o = offs(s, frame); s.keys[frame] = pts.map(q => [q[0] - o[0], q[1] - o[1]]); renderMarks(); }
+
+/* ---------- trackers & bindings ---------- */
+const trkById = id => trackers.find(t => t.id === +id);
+function tpos(t, f) { return t.lo == null ? [t.x, t.y] : (t.track[clamp(f, t.lo, t.hi)] || [t.x, t.y]); }
+function offs(s, f) {
+  if (!s.bind) return [0, 0];
+  const t = trkById(s.bind.tid); if (!t || t.lo == null) return [0, 0];
+  const a = tpos(t, f), b = tpos(t, s.bind.rf), dx = a[0] - b[0];
+  return [s.bind.flip ? -dx : dx, a[1] - b[1]];
+}
+function shapePts(s, f) {
+  const p = evalS(s, f); if (!s.bind) return p;
+  const o = offs(s, f); return p.map(q => [q[0] + o[0], q[1] + o[1]]);
+}
+function setBinding(s, tid) {
+  if (s.bind) { const o = offs(s, frame); for (const k of keysOf(s)) s.keys[k] = s.keys[k].map(q => [q[0] + o[0], q[1] + o[1]]); s.bind = null; }
+  if (tid) s.bind = { tid: +tid, rf: frame, flip: false };
+  renderTree(); renderMarks(); refreshBind();
+}
+function bakeBinding(s) {
+  if (!s || !s.bind || !N) return;
+  if (mode) endMode(true);
+  const keys = {};
+  for (let f = 0; f < N; f++) keys[f] = clone(shapePts(s, f));  // size/position keys + tracker motion
+  s.keys = keys; s.bind = null;
+  renderTree(); renderMarks(); refreshBind();
+}
+function refreshBind() {
+  const b = $('#bindSel');
+  b.innerHTML = '<option value="">None</option>' + trackers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  b.value = sel && sel.bind ? String(sel.bind.tid) : ''; b.disabled = !sel || !trackers.length;
+  $('#bake').disabled = !sel || !sel.bind;
+}
+function addTracker(x, y, hw, hh, sr) {
+  let n = counters.tracker++, name;
+  do { name = 'Tracker' + (n ? n : ''); n++; } while (trackers.some(t => t.name === name));
+  const t = { id: nextId++, name, sf: frame, x, y, hw, hh, sr, track: {}, lo: null, hi: null };
+  trackers.push(t); renderTree(); return t;
+}
+function selectT(t) { if (mode) endMode(true); selT = t; sel = null; editing = false; renderTree(); renderMarks(); updBtns(); }
+function delTracker(t) {
+  shapes.filter(s => s.bind && s.bind.tid === t.id).forEach(s => setBinding(s, null));
+  trackers = trackers.filter(x => x !== t); if (selT === t) selT = null;
+  renderTree(); updBtns();
+}
+const tc = document.createElement('canvas'), tx = tc.getContext('2d', { willReadFrequently: true });
+function grab(x0, y0, w, h) {
+  tc.width = w; tc.height = h; tx.clearRect(0, 0, w, h);
+  tx.drawImage(vid, x0, y0, w, h, 0, 0, w, h);
+  const d = tx.getImageData(0, 0, w, h).data, g = new Float32Array(w * h);
+  for (let i = 0; i < g.length; i++) g[i] = .299 * d[i * 4] + .587 * d[i * 4 + 1] + .114 * d[i * 4 + 2];
+  return g;
+}
+// zero-mean SAD template match over a (2sr+1)^2 window
+function match(reg, rw, tm, tw, th, sr, st) {
+  const sx = [], sy = [], tvl = []; let mt = 0;
+  for (let y = 0; y < th; y += st) for (let x = 0; x < tw; x += st) { sx.push(x); sy.push(y); const v = tm[y * tw + x]; tvl.push(v); mt += v; }
+  const n = tvl.length, tv = new Float32Array(tvl), off = new Int32Array(n);
+  mt /= n; for (let i = 0; i < n; i++) { tv[i] -= mt; off[i] = sy[i] * rw + sx[i]; }
+  let best = 1e30, bx = sr, by = sr;
+  for (let oy = 0; oy <= 2 * sr; oy++) for (let ox = 0; ox <= 2 * sr; ox++) {
+    const b = oy * rw + ox; let mc = 0;
+    for (let i = 0; i < n; i++) mc += reg[b + off[i]];
+    mc /= n; let sc = 0;
+    for (let i = 0; i < n; i++) sc += Math.abs(reg[b + off[i]] - mc - tv[i]);
+    sc = sc / n + .05 * Math.hypot(ox - sr, oy - sr);
+    if (sc < best) { best = sc; bx = ox; by = oy; }
+  }
+  return { x: bx, y: by };
+}
+const seek = f => new Promise(res => {
+  let d = false; const fin = () => { if (!d) { d = true; vid.onseeked = null; res(); } };
+  const t = Math.min((f + .5) / fps, Math.max(0, vid.duration - .001));
+  vid.onseeked = fin; setTimeout(fin, 1500);
+  if (Math.abs(vid.currentTime - t) < 1e-6) fin(); else vid.currentTime = t;
+});
+async function runTrack(t) {
+  busy = true; cancelT = false; playing = false; vid.pause(); $('#play').textContent = '▶ Play';
+  $('#busy').style.display = 'flex'; $('#prog').value = 0;
+  const f0 = frame, hw = t.hw, hh = t.hh, sr = t.sr, tw = 2 * hw, th = 2 * hh;
+  const st = Math.max(1, Math.ceil(Math.sqrt(tw * th / 400)));
+  await seek(t.sf);
+  const tmpl0 = grab(Math.round(t.x) - hw, Math.round(t.y) - hh, tw, th);
+  t.track = {}; t.track[t.sf] = [t.x, t.y];
+  const total = Math.max(1, N - 1); let done = 0;
+  for (const dir of [1, -1]) {
+    let cx = Math.round(t.x), cy = Math.round(t.y); const tm = tmpl0.slice();
+    for (let f = t.sf + dir; f >= 0 && f < N && !cancelT; f += dir) {
+      await seek(f); frame = f; syncUI();
+      $('#busyTxt').textContent = `Tracking ${t.name}… frame ${f}`;
+      const rw = tw + 2 * sr, rh = th + 2 * sr, x0 = cx - hw - sr, y0 = cy - hh - sr;
+      const reg = grab(x0, y0, rw, rh), m = match(reg, rw, tm, tw, th, sr, st);
+      cx = clamp(x0 + m.x + hw, 0, W); cy = clamp(y0 + m.y + hh, 0, H);
+      t.track[f] = [cx, cy];
+      for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) tm[y * tw + x] = .9 * tm[y * tw + x] + .1 * reg[(m.y + y) * rw + m.x + x];
+      $('#prog').value = 100 * (++done) / total;
+    }
+    if (cancelT) break;
+  }
+  const ks = Object.keys(t.track).map(Number); t.lo = Math.min(...ks); t.hi = Math.max(...ks);
+  busy = false; $('#busy').style.display = 'none';
+  setFrame(f0); renderTree(); updBtns();
+}
+
+/* ---------- shapes ---------- */
+function addShape(type) {
+  if (!W) return;
+  const sq = type === 'square', base = sq ? 'Square' : 'Rectangle';
+  const w = sq ? Math.min(W, H) / 4 : W / 4, h = sq ? w : H / 4, o = (shapes.length % 8) * 24;
+  const x = W / 2 - w / 2 + o, y = H / 2 - h / 2 + o;
+  let n = counters[type]++, name;
+  do { name = base + (n ? n : ''); n++; } while (shapes.some(s => s.name === name));
+  const s = { id: nextId++, name, keys: {} };
+  s.keys[frame] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  shapes.push(s);
+  select(s);
+}
+function select(s) {
+  if (mode) endMode(true);
+  selT = null;
+  if (sel !== s) editing = false;
+  sel = s; renderTree(); renderMarks(); updBtns();
+}
+function delShape(s) {
+  if (mode) endMode(false);
+  shapes = shapes.filter(x => x !== s);
+  if (sel === s) { sel = null; editing = false; }
+  renderTree(); renderMarks(); updBtns();
+}
+const centroid = p => [p.reduce((a, q) => a + q[0], 0) / p.length, p.reduce((a, q) => a + q[1], 0) / p.length];
+function pip(p, x, y) {
+  let c = false;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++)
+    if ((p[i][1] > y) !== (p[j][1] > y) && x < (p[j][0] - p[i][0]) * (y - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) c = !c;
+  return c;
+}
+function hit(x, y) {
+  for (let i = shapes.length - 1; i >= 0; i--) if (pip(shapePts(shapes[i], frame), x, y)) return shapes[i];
+  return null;
+}
+
+/* ---------- modal G / S ---------- */
+function startMode(m) {
+  if (!sel) return;
+  if (mode) endMode(true);
+  mode = m;
+  const [sx, sy] = toWorld(mouse.x, mouse.y);
+  snap = { p: cur(sel), sx, sy, kb: JSON.parse(JSON.stringify(sel.keys)) };
+}
+function endMode(commit) {
+  if (!mode) return;
+  if (!commit && sel) sel.keys = snap.kb;
+  mode = null; snap = null; renderMarks();
+}
+
+/* ---------- view ---------- */
+const toWorld = (px, py) => [(px - view.x) / view.s, (py - view.y) / view.s];
+function fit() {
+  const cw = cv.clientWidth, ch = cv.clientHeight;
+  if (!W || !cw) return;
+  view.s = Math.min(cw / (W * 1.6), ch / (H * 1.6));
+  view.x = (cw - W * view.s) / 2; view.y = (ch - H * view.s) / 2;
+}
+function resize() {
+  const d = devicePixelRatio || 1;
+  cv.width = cv.clientWidth * d; cv.height = cv.clientHeight * d;
+}
+new ResizeObserver(() => { resize(); fit(); }).observe($('#stage'));
+
+/* ---------- drawing ---------- */
+function poly(p) { ctx.beginPath(); p.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); }
+function fillPoly(p, a) { poly(p); ctx.fillStyle = `rgba(255,255,255,${a})`; ctx.fill(); }
+
+let lastStatus = '';
+function draw() {
+  requestAnimationFrame(draw);
+  if (playing && N) {
+    const f = clamp(Math.floor(vid.currentTime * fps + 1e-6), 0, N - 1);
+    if (f !== frame) { frame = f; syncUI(); }
+  }
+  const d = devicePixelRatio || 1;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.fillStyle = '#0b0c0e'; ctx.fillRect(0, 0, cv.clientWidth, cv.clientHeight);
+  if (!W) return;
+  ctx.save();
+  ctx.translate(view.x, view.y); ctx.scale(view.s, view.s);
+  if (vid.readyState >= 2) ctx.drawImage(vid, 0, 0, W, H);
+  ctx.lineWidth = 1 / view.s; ctx.strokeStyle = '#59616e'; ctx.strokeRect(0, 0, W, H);
+  for (const s of shapes) {
+    const p = shapePts(s, frame);
+    // outside the video: 75%
+    ctx.save(); ctx.beginPath(); ctx.rect(-1e5, -1e5, 2e5, 2e5); ctx.rect(0, 0, W, H); ctx.clip('evenodd');
+    fillPoly(p, .75); ctx.restore();
+    // inside the video: 50%
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+    fillPoly(p, .5); ctx.restore();
+    if (s === sel) {
+      ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]); ctx.lineTo(p[2][0], p[2][1]); ctx.moveTo(p[1][0], p[1][1]); ctx.lineTo(p[3][0], p[3][1]);
+      ctx.strokeStyle = 'rgba(64,64,64,.25)'; ctx.lineWidth = 1.5 / view.s; ctx.stroke();
+      poly(p);
+      if (editing) {
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 4 / view.s; ctx.stroke();
+        ctx.strokeStyle = '#3b8cff'; ctx.lineWidth = 2 / view.s; ctx.stroke();
+        for (const q of p) {
+          ctx.beginPath(); ctx.arc(q[0], q[1], 6 / view.s, 0, 7);
+          ctx.fillStyle = '#fff'; ctx.fill();
+          ctx.strokeStyle = '#3b8cff'; ctx.lineWidth = 2.5 / view.s; ctx.stroke();
+        }
+      } else { ctx.strokeStyle = '#3b8cff'; ctx.lineWidth = 1.5 / view.s; ctx.stroke(); }
+    }
+  }
+  for (const t of trackers) {
+    if (t.lo == null) continue;
+    const q = tpos(t, frame), on = t === selT, k = 7 / view.s;
+    ctx.save(); ctx.strokeStyle = '#ff9f1c'; ctx.globalAlpha = on ? 1 : .55; ctx.lineWidth = (on ? 2 : 1.2) / view.s;
+    if (on) {
+      ctx.beginPath(); let first = true;
+      for (let f = t.lo; f <= t.hi; f++) { const r = t.track[f]; if (!r) continue; first ? ctx.moveTo(r[0], r[1]) : ctx.lineTo(r[0], r[1]); first = false; }
+      ctx.stroke(); ctx.setLineDash([5 / view.s, 3 / view.s]);
+    }
+    ctx.strokeRect(q[0] - t.hw, q[1] - t.hh, t.hw * 2, t.hh * 2); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(q[0] - k, q[1]); ctx.lineTo(q[0] + k, q[1]); ctx.moveTo(q[0], q[1] - k); ctx.lineTo(q[0], q[1] + k); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+  const st = placing ? 'Click on the video to place the tracking point · Esc cancels' : selT ? 'Tracker selected · the orange line is its tracked path' : mode === 'g' ? 'GRAB: move the mouse · click/Enter confirms · Esc cancels'
+    : mode === 's' ? 'SCALE: wheel up = larger, wheel down = smaller · click/Enter confirms · Esc cancels'
+    : editing ? 'EDIT: drag points or the body · G grab · S scale · K keyframe · Esc exit'
+    : sel ? 'Double-click the shape to edit its points' : '';
+  if (st !== lastStatus) { $('#status').textContent = st; lastStatus = st; }
+}
+
+/* ---------- pointer / keyboard ---------- */
+function pos(e) { const r = cv.getBoundingClientRect(); return mouse = { x: e.clientX - r.left, y: e.clientY - r.top }; }
+cv.addEventListener('pointerdown', e => {
+  const m = pos(e);
+  if (e.button === 1) { drag = { t: 'pan', px: m.x, py: m.y, vx: view.x, vy: view.y }; cv.setPointerCapture(e.pointerId); e.preventDefault(); return; }
+  if (e.button !== 0 || !W) return;
+  if (placing) {
+    placing = false; const [px, py] = toWorld(m.x, m.y);
+    const t = addTracker(clamp(px, 0, W), clamp(py, 0, H), 16, 16, 40);
+    runTrack(t).then(() => selectT(t)); return;
+  }
+  if (mode) { endMode(true); return; }
+  const [x, y] = toWorld(m.x, m.y);
+  if (editing && sel) {
+    const p = cur(sel);
+    const i = p.findIndex(q => Math.hypot(q[0] - x, q[1] - y) * view.s < 10);
+    if (i >= 0) drag = { t: 'pt', i, sx: x, sy: y, p };
+    else if (pip(p, x, y)) drag = { t: 'shape', sx: x, sy: y, p };
+    if (drag) { cv.setPointerCapture(e.pointerId); return; }
+  }
+  const h = hit(x, y);
+  if (h !== sel || selT) select(h);
+});
+cv.addEventListener('pointermove', e => {
+  const m = pos(e);
+  if (drag) {
+    if (drag.t === 'pan') { view.x = drag.vx + m.x - drag.px; view.y = drag.vy + m.y - drag.py; return; }
+    const [x, y] = toWorld(m.x, m.y), dx = x - drag.sx, dy = y - drag.sy, p = clone(drag.p);
+    if (drag.t === 'pt') { p[drag.i][0] += dx; p[drag.i][1] += dy; }
+    else p.forEach(q => { q[0] += dx; q[1] += dy; });
+    setKey(sel, p);
+  } else if (mode === 'g') {
+    const [x, y] = toWorld(m.x, m.y);
+    setKey(sel, snap.p.map(q => [q[0] + x - snap.sx, q[1] + y - snap.sy]));
+  }
+});
+cv.addEventListener('pointerup', () => { drag = null; });
+cv.addEventListener('dblclick', e => {
+  const m = pos(e), [x, y] = toWorld(m.x, m.y), h = hit(x, y);
+  if (h) { select(h); editing = true; }
+});
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const m = pos(e);
+  if (mode === 's') {
+    const p = cur(sel), c = centroid(p), k = e.deltaY < 0 ? 1.05 : 1 / 1.05;
+    setKey(sel, p.map(q => [c[0] + (q[0] - c[0]) * k, c[1] + (q[1] - c[1]) * k]));
+  } else if (W) {
+    const k = e.deltaY < 0 ? 1.1 : 1 / 1.1, [x, y] = toWorld(m.x, m.y);
+    view.s = clamp(view.s * k, .05, 40); view.x = m.x - x * view.s; view.y = m.y - y * view.s;
+  }
+}, { passive: false });
+
+addEventListener('keydown', e => {
+  if (e.target.matches('input:not([type=range])') || e.ctrlKey || e.metaKey) return;
+  if (busy) { if (e.key === 'Escape') cancelT = true; return; }
+  const k = e.key.toLowerCase();
+  if (e.key === 'ArrowLeft') { e.preventDefault(); step(e.shiftKey ? -10 : -1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); step(e.shiftKey ? 10 : 1); }
+  else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  else if (k === 'g' || k === 's') { if (sel) { e.preventDefault(); mode === k ? endMode(true) : startMode(k); } }
+  else if (e.key === 'Enter') endMode(true);
+  else if (e.key === 'Escape') { if (placing) placing = false; else if (mode) endMode(false); else if (editing) editing = false; else select(null); }
+  else if (k === 'k') { if (sel) setKey(sel, cur(sel)); }
+  else if (e.key === 'Delete' && !mode) { if (sel) delShape(sel); else if (selT) delTracker(selT); }
+});
+document.addEventListener('click', e => { if (e.target.matches('button')) e.target.blur(); });
+
+/* ---------- video ---------- */
+function setFrame(f) {
+  if (!N) return;
+  frame = clamp(Math.round(f), 0, N - 1);
+  if (!vid.paused) vid.pause();
+  vid.currentTime = Math.min((frame + .5) / fps, Math.max(0, vid.duration - .001));
+  syncUI();
+}
+const step = d => setFrame(frame + d);
+function syncUI() { $('#scrub').value = frame; $('#fr').textContent = `${frame} / ${Math.max(0, N - 1)}`; }
+function togglePlay() {
+  if (!N) return;
+  if (vid.paused) {
+    if (frame >= N - 1) setFrame(0);
+    playing = true; vid.play(); $('#play').textContent = '❚❚ Pause';
+  } else vid.pause();
+}
+vid.addEventListener('pause', () => {
+  if (!playing) return;
+  playing = false; $('#play').textContent = '▶ Play';
+  if (N) { frame = clamp(Math.floor(vid.currentTime * fps + 1e-6), 0, N - 1); setFrame(frame); }
+});
+vid.addEventListener('ended', () => vid.pause());
+
+function detectFps() {
+  return new Promise(res => {
+    if (!vid.requestVideoFrameCallback) return res();
+    let last = null, min = 1e9, n = 0, done = false;
+    const fin = () => { if (done) return; done = true; vid.pause(); if (min < 1e9 && min > 0) fps = Math.round(100 / min) / 100; vid.currentTime = 0; res(); };
+    const cb = (t, m) => {
+      if (last !== null && m.mediaTime > last) min = Math.min(min, m.mediaTime - last);
+      last = m.mediaTime;
+      if (++n < 12 && !vid.ended) vid.requestVideoFrameCallback(cb); else fin();
+    };
+    vid.requestVideoFrameCallback(cb);
+    vid.play().catch(fin);
+    setTimeout(fin, 2000);
+  });
+}
+function load(file) {
+  if (!file || !(/^video\//.test(file.type) || /\.mp4$/i.test(file.name))) return;
+  if (shapes.length && !confirm('Loading a new video discards the current shapes. Continue?')) return;
+  vid.pause(); playing = false;
+  if (vid.src) URL.revokeObjectURL(vid.src);
+  vid.src = URL.createObjectURL(file); fileName = file.name;
+  shapes = []; sel = null; editing = false; mode = null; counters = { rectangle: 0, square: 0, tracker: 0 }; trackers = []; selT = null; N = 0; frame = 0;
+  vid.onloadedmetadata = async () => {
+    W = vid.videoWidth; H = vid.videoHeight;
+    await detectFps();
+    $('#fps').value = fps; setN();
+    $('#drop').style.display = 'none';
+    resize(); fit(); setFrame(0); renderTree(); renderMarks(); updBtns();
+  };
+}
+function setN() {
+  N = Math.max(1, Math.round(vid.duration * fps));
+  $('#scrub').max = N - 1; frame = clamp(frame, 0, N - 1);
+}
+$('#fps').addEventListener('change', e => {
+  const v = parseFloat(e.target.value);
+  if (!(v > 0)) { e.target.value = fps; return; }
+  fps = v; if (W) { setN(); setFrame(frame); renderMarks(); }
+});
+
+/* ---------- UI ---------- */
+function updBtns() {
+  const v = !!N;
+  ['#add', '#prev', '#next', '#play', '#scrub', '#exp', '#imp'].forEach(s => $(s).disabled = !v);
+  $('#setkey').disabled = !sel; $('#mirror').disabled = !sel; $('#trkPt').disabled = !N; $('#trkShape').disabled = !sel || !N; refreshBind(); $('#delkey').disabled = !sel; $('#delL').disabled = !sel; $('#delR').disabled = !sel;
+}
+function renderTree() {
+  $('#tree').innerHTML =
+    `<div class="it" style="padding-left:8px">▾ Workspace</div>` +
+    `<div class="it" style="padding-left:22px">▾ ${esc(fileName || 'no video loaded')}</div>` +
+    shapes.map(s => `<div class="it sh${s === sel ? ' sel' : ''}" data-id="${s.id}" style="padding-left:40px">▭ <span>${esc(s.name)}</span>${s.bind ? ' ⛓' : ''}</div>`).join('') +
+    (trackers.length ? `<div class="it" style="padding-left:22px">▾ Trackers</div>` +
+      trackers.map(t => `<div class="it sh${t === selT ? ' sel' : ''}" data-tid="${t.id}" style="padding-left:40px">◎ <span>${esc(t.name)}</span></div>`).join('') : '');
+}
+function renderMarks() {
+  const m = $('#marks'); m.innerHTML = '';
+  if (!sel || N < 2) return;
+  keysOf(sel).forEach(k => {
+    const d = document.createElement('i');
+    d.style.left = `calc(${k / (N - 1)} * (100% - 14px) + 7px)`;
+    d.title = 'Keyframe ' + k; d.onclick = () => setFrame(k);
+    m.append(d);
+  });
+}
+const byId = id => shapes.find(s => s.id === +id);
+$('#tree').addEventListener('click', e => {
+  const r = e.target.closest('.sh'); if (!r || e.target.tagName === 'INPUT') return;
+  if (r.dataset.tid) selectT(trkById(r.dataset.tid)); else select(byId(r.dataset.id));
+});
+let menuItem = null;
+$('#tree').addEventListener('contextmenu', e => {
+  const r = e.target.closest('.sh'); if (!r) return;
+  e.preventDefault();
+  if (r.dataset.tid) { menuItem = trkById(r.dataset.tid); selectT(menuItem); } else { menuItem = byId(r.dataset.id); select(menuItem); }
+  const m = $('#menu'); m.style.display = 'block'; m.style.left = e.clientX + 'px'; m.style.top = e.clientY + 'px';
+});
+$('#menu').addEventListener('click', e => {
+  const a = e.target.dataset.a; $('#menu').style.display = 'none';
+  if (!menuItem) return;
+  const isT = trackers.includes(menuItem);
+  if (a === 'rename') rename(menuItem, isT ? `.sh[data-tid="${menuItem.id}"] span` : `.sh[data-id="${menuItem.id}"] span`);
+  else if (a === 'del') isT ? delTracker(menuItem) : delShape(menuItem);
+});
+addEventListener('pointerdown', e => { if (!e.target.closest('#menu')) $('#menu').style.display = 'none'; });
+function rename(o, selector) {
+  const span = document.querySelector(selector); if (!span) return;
+  const inp = document.createElement('input'); inp.value = o.name; span.replaceWith(inp); inp.focus(); inp.select();
+  let fin = false;
+  const done = ok => { if (fin) return; fin = true; if (ok && inp.value.trim()) o.name = inp.value.trim(); renderTree(); refreshBind(); };
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+  inp.onblur = () => done(true);
+}
+
+$('#trkPt').onclick = () => { if (N) { if (mode) endMode(true); placing = true; } };
+$('#trkShape').onclick = async () => {
+  if (!sel || !N) return;
+  const s = sel, p = cur(s), xs = p.map(q => q[0]), ys = p.map(q => q[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const hw = Math.round(clamp((x1 - x0) / 2, 8, 120)), hh = Math.round(clamp((y1 - y0) / 2, 8, 120));
+  const t = addTracker(clamp((x0 + x1) / 2, 0, W), clamp((y0 + y1) / 2, 0, H), hw, hh, Math.max(40, Math.round(Math.max(hw, hh) * .6)));
+  await runTrack(t); setBinding(s, t.id);
+};
+function delKeysSide(dir) {
+  if (!sel) return;
+  const ks = keysOf(sel);
+  let rm = ks.filter(k => dir > 0 ? k > frame : k < frame);
+  if (!rm.length) return;
+  if (rm.length === ks.length) rm = dir > 0 ? rm.slice(1) : rm.slice(0, -1);  // a shape always keeps one keyframe
+  rm.forEach(k => delete sel.keys[k]);
+  renderMarks();
+}
+$('#delL').onclick = () => delKeysSide(-1);
+$('#delR').onclick = () => delKeysSide(1);
+$('#bake').onclick = () => bakeBinding(sel);
+$('#bindSel').onchange = e => { if (sel) setBinding(sel, e.target.value || null); };
+$('#cancelT').onclick = () => { cancelT = true; };
+$('#add').onclick = e => {
+  e.stopPropagation();
+  const d = $('#addDlg'), r = $('#add').getBoundingClientRect();
+  d.style.left = r.left + 'px'; d.style.top = r.bottom + 6 + 'px'; d.style.display = 'block';
+  d.querySelector('button').focus();
+};
+$('#addDlg').addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  $('#addDlg').style.display = 'none'; addShape(t.dataset.type);
+});
+addEventListener('pointerdown', e => { if (!e.target.closest('#addDlg')) $('#addDlg').style.display = 'none'; });
+addEventListener('keydown', e => { if (e.key === 'Escape') $('#addDlg').style.display = 'none'; }, true);
+$('#prev').onclick = () => step(-1);
+$('#next').onclick = () => step(1);
+$('#play').onclick = togglePlay;
+$('#scrub').addEventListener('input', e => setFrame(+e.target.value));
+$('#setkey').onclick = () => { if (sel) setKey(sel, cur(sel)); };
+$('#delkey').onclick = () => { if (sel && keysOf(sel).length > 1) { delete sel.keys[frame]; renderMarks(); } };
+$('#open').onclick = $('#drop').onclick = () => $('#file').click();
+$('#file').onchange = e => { load(e.target.files[0]); e.target.value = ''; };
+addEventListener('dragover', e => { e.preventDefault(); $('#drop').classList.add('over'); });
+addEventListener('dragleave', e => { if (!e.relatedTarget) $('#drop').classList.remove('over'); });
+addEventListener('drop', e => { e.preventDefault(); $('#drop').classList.remove('over'); load(e.dataTransfer.files[0]); });
+
+/* ---------- XML export ---------- */
+const area = p => { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; } return Math.abs(a) / 2; };
+function clipRect(p) {
+  for (const [ax, mx] of [[0, 0], [0, 1], [1, 0], [1, 1]]) {
+    const lim = mx ? (ax ? H : W) : 0, out = [], ins = q => mx ? q[ax] <= lim : q[ax] >= lim;
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length];
+      if (ins(a)) out.push(a);
+      if (ins(a) !== ins(b)) { const t = (lim - a[ax]) / (b[ax] - a[ax]); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+    }
+    p = out; if (!p.length) break;
+  }
+  return p;
+}
+const r2 = v => Math.round(v * 100) / 100;
+const ptsXml = (p, ind) => p.map((q, i) =>
+  `${ind}<point index="${i}" x="${r2(q[0])}" y="${r2(q[1])}" inFrame="${q[0] >= 0 && q[0] <= W && q[1] >= 0 && q[1] <= H}"/>`).join('\n');
+function exportXML() {
+  if (!shapes.length) { alert('Add at least one rectangle first.'); return; }
+  const o = [`<?xml version="1.0" encoding="UTF-8"?>`,
+    `<animation source="${esc(fileName)}" videoWidth="${W}" videoHeight="${H}" fps="${fps}" frameCount="${N}" interpolation="linear">`];
+  for (const t of trackers) {
+    o.push(`  <tracker id="${t.id}" name="${esc(t.name)}" startFrame="${t.sf}" x="${r2(t.x)}" y="${r2(t.y)}" halfWidth="${t.hw}" halfHeight="${t.hh}" search="${t.sr}">`);
+    if (t.lo != null) for (let f = t.lo; f <= t.hi; f++) { const q = t.track[f]; if (q) o.push(`    <pos frame="${f}" x="${r2(q[0])}" y="${r2(q[1])}"/>`); }
+    o.push(`  </tracker>`);
+  }
+  for (const s of shapes) {
+    const b = s.bind ? ` boundTo="${s.bind.tid}" bindFrame="${s.bind.rf}" mirroredBinding="${!!s.bind.flip}"` : '';
+    o.push(`  <shape id="${s.id}" name="${esc(s.name)}"${b}>`, `    <keyframes>`);
+    keysOf(s).forEach(k => o.push(`      <key frame="${k}">`, ptsXml(s.keys[k], '        '), `      </key>`));
+    o.push(`    </keyframes>`, `    <frames>`);
+    for (let f = 0; f < N; f++) {
+      const p = shapePts(s, f), a = area(p), ratio = a > 1e-9 ? area(clipRect(clone(p))) / a : 0;
+      const state = ratio > .9999 ? 'inside' : ratio < .0001 ? 'outside' : 'partial';
+      o.push(`      <frame index="${f}" state="${state}" visibleRatio="${Math.round(ratio * 10000) / 10000}">`, ptsXml(p, '        '), `      </frame>`);
+    }
+    o.push(`    </frames>`, `  </shape>`);
+  }
+  o.push(`</animation>`);
+  const url = URL.createObjectURL(new Blob([o.join('\n')], { type: 'application/xml' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = (fileName.replace(/\.[^.]+$/, '') || 'video') + '_shapes.xml';
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('#exp').onclick = exportXML;
+
+/* ---------- mirror ---------- */
+function uniqueName(n) {
+  if (!shapes.some(s => s.name === n)) return n;
+  let i = 1; while (shapes.some(s => s.name === n + i)) i++;
+  return n + i;
+}
+function mirrorShape() {
+  if (!sel || !W) return;
+  const m = { id: nextId++, name: uniqueName(sel.name + ' mirror'), keys: {}, bind: sel.bind ? { ...sel.bind, flip: !sel.bind.flip } : null };
+  for (const k of keysOf(sel)) m.keys[k] = sel.keys[k].map(q => [W - q[0], q[1]]);
+  shapes.push(m); select(m);
+}
+$('#mirror').onclick = mirrorShape;
+
+/* ---------- XML import ---------- */
+function importXML(text) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  const root = doc.documentElement;
+  if (doc.querySelector('parsererror') || root.nodeName !== 'animation') { alert('This is not a Frame Tracer XML file.'); return; }
+  const vw = +root.getAttribute('videoWidth'), vh = +root.getAttribute('videoHeight');
+  if ((vw && vw !== W) || (vh && vh !== H)) {
+    if (!confirm(`The XML was made for a ${vw}×${vh} video, but this one is ${W}×${H}. Import anyway?`)) return;
+  }
+  const xf = parseFloat(root.getAttribute('fps'));
+  const tmap = {}, newT = [];
+  for (const te of root.querySelectorAll(':scope > tracker')) {
+    const t = { id: nextId++, name: te.getAttribute('name') || 'Tracker', sf: +te.getAttribute('startFrame') || 0, x: +te.getAttribute('x'), y: +te.getAttribute('y'),
+      hw: +te.getAttribute('halfWidth') || 16, hh: +te.getAttribute('halfHeight') || 16, sr: +te.getAttribute('search') || 40, track: {}, lo: null, hi: null };
+    te.querySelectorAll(':scope > pos').forEach(q => { t.track[+q.getAttribute('frame')] = [+q.getAttribute('x'), +q.getAttribute('y')]; });
+    const ks = Object.keys(t.track).map(Number); if (ks.length) { t.lo = Math.min(...ks); t.hi = Math.max(...ks); }
+    tmap[te.getAttribute('id')] = t.id; newT.push(t);
+  }
+  const found = [];
+  for (const sh of root.querySelectorAll(':scope > shape')) {
+    const keys = {};
+    const readPts = el => [...el.querySelectorAll(':scope > point')]
+      .sort((a, b) => a.getAttribute('index') - b.getAttribute('index'))
+      .map(q => [parseFloat(q.getAttribute('x')), parseFloat(q.getAttribute('y'))]);
+    sh.querySelectorAll(':scope > keyframes > key').forEach(k => {
+      const pts = readPts(k);
+      if (pts.length >= 3 && pts.every(q => isFinite(q[0]) && isFinite(q[1]))) keys[+k.getAttribute('frame')] = pts;
+    });
+    if (!Object.keys(keys).length) {
+      const f0 = sh.querySelector(':scope > frames > frame');
+      if (f0) keys[+f0.getAttribute('index')] = readPts(f0);
+    }
+    if (Object.keys(keys).length) found.push({ name: sh.getAttribute('name') || 'Shape', keys,
+      bind: sh.hasAttribute('boundTo') && tmap[sh.getAttribute('boundTo')] ? { tid: tmap[sh.getAttribute('boundTo')], rf: +sh.getAttribute('bindFrame') || 0, flip: sh.getAttribute('mirroredBinding') === 'true' } : null });
+  }
+  if (!found.length) { alert('No shapes were found in this XML file.'); return; }
+  if (mode) endMode(true);
+  if (shapes.length && confirm('Replace the current shapes with the imported ones?\n\nOK = replace, Cancel = add them alongside.')) { shapes = []; sel = null; editing = false; trackers = []; selT = null; }
+  if (xf > 0 && xf !== fps) { fps = xf; $('#fps').value = fps; setN(); }
+  let last = null;
+  trackers.push(...newT);
+  for (const f of found) { last = { id: nextId++, name: uniqueName(f.name), keys: f.keys, bind: f.bind }; shapes.push(last); }
+  setFrame(frame); select(last);
+}
+$('#imp').onclick = () => $('#xmlfile').click();
+$('#xmlfile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (f) importXML(await f.text());
+};
+
+renderTree(); resize(); draw();
+</script>
+</body>
+</html>
